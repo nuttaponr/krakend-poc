@@ -1,0 +1,290 @@
+$schema: https://www.krakend.io/schema/krakend.json
+version: 3
+name: KrakenD - API Gateway
+port: 8080
+echo_endpoint: true
+debug_endpoint: true
+# tls:
+#   public_key: /etc/krakend/certificates/server.crt
+#   private_key: /etc/krakend/certificates/server.key
+#   enable_mtls: true
+#   ca_certs:
+#     - /etc/krakend/certificates/rootCA.pem
+#   disable_system_ca_pool: true
+timeout: 3000ms
+cache_ttl: 300s
+endpoints:
+  - "@comment": "Feature: Basic route"
+    endpoint: /v1/users
+    method: GET
+    backend:
+      - url_pattern: /users
+        method: GET
+        host:
+          - https://dummyjson.com
+  - "@comment": "Feature: Basic route with output encoding"
+    endpoint: /v1/users/xml
+    method: GET
+    output_encoding: xml
+    backend:
+      - url_pattern: /users
+        method: GET
+        host:
+          - https://dummyjson.com
+  - "@comment": "Feature: Basic route with parameter forwarding"
+    endpoint: /v1/user/{id}
+    method: GET
+    output_encoding: json
+    backend:
+      - url_pattern: /user/{id}
+        method: GET
+        host:
+          - https://dummyjson.com
+  - "@comment": "Feature: Aggregation + Basic transformation (filtering & mapping) + grouping"
+    endpoint: /v1/git/{user}
+    backend:
+      - host:
+          - https://api.github.com
+        url_pattern: /users/{user}
+        allow:
+          - avatar_url
+          - name
+          - company
+          - blog
+          - location
+          - mail
+          - hireable
+          - followers
+          - public_repos
+          - public_gists
+        mapping:
+          blog: website
+        group: user
+      - host:
+          - https://api.github.com
+        url_pattern: /users/{user}/repos
+        mapping:
+          collection: repos
+        is_collection: true
+  - "@comment": "Feature: Aggregation & Transformation with collections"
+    endpoint: /v1/cryptos/{currency}
+    backend:
+      - host:
+          - https://api.coingecko.com
+        url_pattern: /api/v3/coins/markets?vs_currency={currency}&ids=bitcoin%2Cethereum&order=market_cap_desc&per_page=100&page=1&sparkline=false
+        encoding: safejson
+        extra_config:
+          proxy:
+            flatmap_filter:
+              - type: move
+                args:
+                  - collection
+                  - coins
+              - type: del
+                args:
+                  - coins.*.ath_change_percentage
+                  - coins.*.ath_date
+                  - coins.*.atl
+                  - coins.*.atl_change_percentage
+                  - coins.*.atl_date
+                  - coins.*.circulating_supply
+                  - coins.*.fully_diluted_valuation
+                  - coins.*.high_24h
+                  - coins.*.fully_diluted_valuation
+                  - coins.*.low_24h
+                  - coins.*.market_cap_change_24h
+                  - coins.*.market_cap_change_percentage_24h
+                  - coins.*.market_cap_rank
+                  - coins.*.max_supply
+                  - coins.*.price_change_24h
+                  - coins.*.price_change_percentage_24h
+                  - coins.*.roi
+                  - coins.*.total_supply
+                  - coins.*.total_volume
+      - host:
+          - https://api.coingecko.com
+        url_pattern: /api/v3/global
+        allow:
+          - total_market_cap.btc
+          - total_market_cap.eth
+          - total_volume.btc
+          - total_volume.eth
+          - market_cap_percentage.btc
+          - market_cap_percentage.eth
+          - updated_at
+        target: data
+        group: market
+  - "@comment": "Feature: Sequential calls, using values from 1st call response into 2nd call request"
+    endpoint: /v1/user-todos/search/{user}
+    method: GET
+    backend:
+      - url_pattern: "/users/search?q={user}"
+        encoding: json
+        sd: static
+        sd_scheme: http
+        method: GET
+        host:
+          - https://dummyjson.com
+        extra_config:
+          proxy:
+            flatmap_filter:
+              - type: move
+                args:
+                  - users.0.id
+                  - id
+              - type: move
+                args:
+                  - users.0.firstName
+                  - name
+              - type: del
+                args:
+                  - users
+                  - limit
+                  - skip
+                  - total
+      - url_pattern: "/todos/user/{resp0_id}"
+        method: GET
+        host:
+          - https://dummyjson.com
+        group: todo_list
+    extra_config:
+      proxy:
+        sequential: true
+  - "@comment": "Feature: Sequential calls + conditional call"
+    endpoint: "/v1/cel"
+    input_query_strings:
+    - foo
+    backend:
+    - host:
+      - http://localhost:8080
+      url_pattern: "/__debug/0"
+    - host:
+      - http://localhost:8080  
+      url_pattern: "/__debug/1?ignore={resp0_message}"
+      group: sequence1
+      extra_config:
+        validation/cel:
+        - check_expr: has(req_params.Resp0_message)
+    - host:
+      - http://localhost:8080
+      url_pattern: "/__debug/2"
+      group: sequence2
+      extra_config:
+        validation/cel:
+        - check_expr: resp_data.sequence2.message == 'pong'
+    - host:
+      - http://localhost:8080
+      url_pattern: "/__debug/3"
+      group: sequence3
+      extra_config:
+        validation/cel:
+        - check_expr: has(req_querystring.foo)
+    - host:
+      - http://localhost:8080
+      url_pattern: "/__debug/4"
+      group: sequence4
+      extra_config:
+        validation/cel:
+        - check_expr: has(req_params.NEVER_CALLED_BACKEND)
+    extra_config:
+      proxy:
+        sequential: true
+  - "@comment": "Feature: Query String modifier with Martian"
+    endpoint: "/v1/querystring.Modifier"
+    input_query_strings:
+      - currency
+      - amount
+    backend:
+    - host:
+      - http://localhost:8080
+      url_pattern: "/__echo/querystring.Modifier"
+      allow:
+        - req_uri
+      extra_config:
+        modifier/martian:
+          querystring.Modifier:
+            scope:
+              - request
+            name: amount
+            value: "1000"
+  - "@comment": "Feature: Validating the requests with JSON Schema + Publisher messages to kafka"
+    endpoint: /v1/pub/kafka
+    method: POST
+    output_encoding: no-op
+    backend:
+      - host:
+          - kafka://
+        disable_host_sanitize: true
+        extra_config:
+          backend/pubsub/publisher:
+            topic_url: krakend
+    extra_config:
+      validation/json-schema:
+        type: object
+        required:
+        - msg
+        properties:
+          msg:
+            type: string
+  - "@comment": "Feature: Concurrent calls - Not enabled"
+    endpoint: /v1/market/simple
+    backend:
+      - host:
+          - https://api.coingecko.com
+        url_pattern: /api/v3/coins/markets?vs_currency=eur&ids=bitcoin%2Cethereum&order=market_cap_desc&per_page=100&page=1&sparkline=false
+        encoding: safejson
+        mapping:
+          collection: coins
+  - "@comment": "Feature: Concurrent calls - Enabled"
+    endpoint: /v1/market/concurrent
+    concurrent_calls: 3
+    backend:
+      - host:
+          - https://api.coingecko.com
+        url_pattern: /api/v3/coins/markets?vs_currency=eur&ids=bitcoin%2Cethereum&order=market_cap_desc&per_page=100&page=1&sparkline=false
+        encoding: safejson
+        mapping:
+          collection: coins
+  - "@comment": "Feature: GraphQL to REST"
+    endpoint: /v1/starwars_films/{movie_id}
+    backend:
+      - host:
+          - https://swapi-graphql.netlify.app/
+        url_pattern: /.netlify/functions/index
+        target: data.film
+        extra_config:
+          backend/graphql:
+            type: query
+            query: |-
+              query Query ($movie_id: ID!) {
+              film (filmID: $movie_id) {
+              id
+              episodeID
+              title
+              director
+              releaseDate
+              speciesConnection {
+              species {
+              name
+              classification
+              homeworld {
+              name
+              }
+              }
+              }
+              }
+              }
+            variables:
+              movie_id: "{movie_id}"
+  - "@comment": "Feature: Backend cache"
+    endpoint: /v1/market/cached
+    backend:
+      - host:
+          - https://api.coingecko.com
+        url_pattern: /api/v3/coins/markets?vs_currency=eur&ids=bitcoin%2Cethereum&order=market_cap_desc&per_page=100&page=1&sparkline=false
+        encoding: safejson
+        mapping:
+          collection: coins
+        extra_config:
+          qos/http-cache:
+            shared: true

@@ -1,0 +1,34 @@
+# Support
+- rest api like kong
+    get 
+    put
+    post
+- Response manipulation
+    https://www.krakend.io/docs/backends/data-manipulation
+- pub/sub kafka
+- auth
+    oauth ( Can be only client and type client clientredentials )
+    jwt 
+- mTLS
+# UnSupport    
+- grpc (only enterprise)
+- soap (only enterprise)
+- auth
+    API-Key Authentication (only enterprise)
+- tranfrom request
+    rest api > grpc
+    rest api > soap
+    
+# Todo   
+- latelimit
+- deploy krakend cluster
+- aggregate API 
+- tranfrom request
+    rest api > grpc
+    rest api > soap
+    rest api > pub/sub
+- kafka -- xx
+- sequence proxy
+- circuit breaker
+- Grafana+Influx (metrics), ELK (log storing and visualization), Jaeger (tracing)
+

@@ -1,0 +1,25 @@
+### GET User
+curl 'http://localhost:8080/v1/users' 
+
+### GET User by id
+curl 'http://localhost:8080/v1/user/1' 
+
+### Combine user and products
+curl 'http://localhost:8080/v1/user-products/1' 
+
+### mTLS
+curl --cacert ./tmp/rootCA.pem --key ./tmp/client.key  --cert ./tmp/client.crt https://localhost:8080/__health
+
+### with out ssl is fail
+curl -k https://localhost:8080/__health
+
+### Mapping
+curl 'http://localhost:8080/v1/git/nuttaponr' 
+
+### POST to kafka
+curl -X POST \
+  -H "Content-Type: application/json" \
+  -d '{
+    "msssssg": "helloworld"
+  }' \
+  http://localhost:8080/v1/pub/kafka
